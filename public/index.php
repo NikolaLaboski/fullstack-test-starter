@@ -15,10 +15,22 @@ $routeInfo = $dispatcher->dispatch($_SERVER['REQUEST_METHOD'], $path);
 
 switch ($routeInfo[0]) {
     case FastRoute\Dispatcher::NOT_FOUND:
+        // Health check: return OK on root
+        if ($path === '/') {
+            header('Content-Type: text/plain; charset=utf-8');
+            echo "OK";
+            break;
+        }
+        http_response_code(404);
+        echo "Not Found";
         break;
+
     case FastRoute\Dispatcher::METHOD_NOT_ALLOWED:
         $allowedMethods = $routeInfo[1];
+        http_response_code(405);
+        echo "Method Not Allowed";
         break;
+
     case FastRoute\Dispatcher::FOUND:
         $handler = $routeInfo[1];
         $vars = $routeInfo[2];
