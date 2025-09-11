@@ -149,3 +149,4 @@ class GraphQL {
         return json_encode($output);
     }
 }
+ 
