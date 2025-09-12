@@ -1,18 +1,19 @@
 <?php
-header('Content-Type: text/plain; charset=utf-8');
-echo "HOST=".getenv('MYSQLHOST')."\n";
-echo "PORT=".getenv('MYSQLPORT')."\n";
-echo "DB=".getenv('MYSQLDATABASE')."\n";
-echo "USER=".getenv('MYSQLUSER')."\n";
+$host = getenv('MYSQLHOST');
+$db   = getenv('MYSQLDATABASE');
+$user = getenv('MYSQLUSER');
+$pass = getenv('MYSQLPASSWORD');
+$port = getenv('MYSQLPORT');
+
+echo "HOST=$host\n";
+echo "PORT=$port\n";
+echo "DB=$db\n";
+echo "USER=$user\n";
+
 try {
-  $pdo = new PDO(
-    "mysql:host=".getenv('MYSQLHOST').";port=".getenv('MYSQLPORT').";dbname=".getenv('MYSQLDATABASE').";charset=utf8mb4",
-    getenv('MYSQLUSER'),
-    getenv('MYSQLPASSWORD'),
-    [PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]
-  );
-  $pdo->query('SELECT 1');
-  echo "DB OK\n";
+    $dsn = "mysql:host=$host;port=$port;dbname=$db;charset=utf8mb4";
+    $pdo = new PDO($dsn, $user, $pass);
+    echo "DB OK\n";
 } catch (Throwable $e) {
-  echo "DB FAIL: ".$e->getMessage()."\n";
+    echo "DB FAIL: " . $e->getMessage();
 }
