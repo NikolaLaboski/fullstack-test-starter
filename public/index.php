@@ -1,20 +1,18 @@
 <?php
-// Minimal router + health + GraphQL entry
+// Router: health, GraphQL, dbtest
 
-// 1) Health on "/"
 $rawPath = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?? '/';
 $path    = rawurldecode($rawPath);
 
-// Strip control chars & spaces
+// normalize
 $path = rtrim($path, " \t\n\r\0\x0B");
-// Remove trailing slashes except root
 if ($path !== '/') {
     $path = rtrim($path, '/');
 }
 
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 
-// CORS for frontend (add your domain(s) here)
+// --- CORS ---
 $allowed = ['https://scweb-shop.netlify.app', 'http://localhost:5173'];
 $origin  = $_SERVER['HTTP_ORIGIN'] ?? '';
 if (in_array($origin, $allowed, true)) {
@@ -30,13 +28,14 @@ if ($method === 'OPTIONS') {
     exit;
 }
 
+// --- Health check ---
 if ($path === '/' && $method === 'GET') {
     header('Content-Type: text/plain; charset=utf-8');
     echo "OK";
     exit;
 }
 
-// 2) GraphQL route: accepts "/graphql" AND "/graphql/"
+// --- GraphQL endpoint ---
 if ($path === '/graphql') {
     if ($method === 'GET') {
         header('Content-Type: text/plain; charset=utf-8');
@@ -50,15 +49,34 @@ if ($path === '/graphql') {
         exit;
     }
 
-    // Load autoloader only when we actually hit GraphQL
     require_once __DIR__ . '/../vendor/autoload.php';
-
-    // Call your existing controller
     echo App\Controller\GraphQL::handle();
     exit;
 }
 
-// 3) Fallback 404 (also prints the normalized path for debug)
+// --- DB diagnostic (optional) ---
+if ($path === '/dbtest') {
+    header('Content-Type: text/plain; charset=utf-8');
+    try {
+        $pdo = new PDO(
+            sprintf(
+                'mysql:host=%s;port=%s;dbname=%s;charset=utf8mb4',
+                getenv('MYSQLHOST'),
+                getenv('MYSQLPORT'),
+                getenv('MYSQLDATABASE')
+            ),
+            getenv('MYSQLUSER'),
+            getenv('MYSQLPASSWORD'),
+            [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
+        );
+        echo "✅ DB connection OK\n";
+    } catch (Throwable $e) {
+        echo "❌ DB connection failed: " . $e->getMessage() . "\n";
+    }
+    exit;
+}
+
+// --- 404 fallback ---
 http_response_code(404);
 header('Content-Type: text/plain; charset=utf-8');
 echo "Not Found: {$path}";
