@@ -1,16 +1,16 @@
 <?php
-// public/index.php — health, /dbtest, и GraphQL рута
+// public/index.php — health, /dbtest proxy (public/graphql/index.php)
 
 $rawPath = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?? '/';
 $path    = rawurldecode($rawPath);
 $path    = rtrim($path, " \t\n\r\0\x0B");
-if ($path !== '/') $path = rtrim($path, '/');
+if ($path !== '/') { $path = rtrim($path, '/'); }
 $method  = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 
-// CORS
+/* ---------- CORS ---------- */
 $allowed = ['https://scweb-shop.netlify.app', 'http://localhost:5173'];
 $origin  = $_SERVER['HTTP_ORIGIN'] ?? '';
-if (in_array($origin, $allowed, true)) {
+if ($origin && in_array($origin, $allowed, true)) {
   header("Access-Control-Allow-Origin: $origin");
   header('Vary: Origin');
   header('Access-Control-Allow-Credentials: true');
@@ -19,13 +19,14 @@ header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With, Apollo-Require-Preflight');
 if ($method === 'OPTIONS') { http_response_code(204); exit; }
 
-// Health
+/* ---------- Health ---------- */
 if ($path === '/' && $method === 'GET') {
   header('Content-Type: text/plain; charset=utf-8');
-  echo "OK"; exit;
+  echo "OK";
+  exit;
 }
 
-// ---- DB DIAG ----
+/* ---------- DB DIAGNOSTIC: /dbtest ---------- */
 if ($path === '/dbtest') {
   header('Content-Type: text/plain; charset=utf-8');
 
@@ -50,7 +51,7 @@ if ($path === '/dbtest') {
   if ($sock) { echo "SOCKET=OK (".number_format(($t1-$t0)*1000,1)." ms)\n"; fclose($sock); }
   else { echo "SOCKET=FAIL ($errno) $errstr\n"; }
 
-  // Try 1: ssl-mode=REQUIRED (mysqlnd)
+  
   try {
     $dsn = "mysql:host={$host};port={$port};dbname={$db};charset=utf8mb4;ssl-mode=REQUIRED";
     $pdo = new PDO($dsn, $user, $pass, [
@@ -65,31 +66,7 @@ if ($path === '/dbtest') {
     echo "PDO_SSL_REQUIRED=FAIL: ".$e->getMessage()."\n";
   }
 
-  // Try 2: VERIFY_CA со Let's Encrypt ISRG Root X1
-  $ca = <<<PEM
------BEGIN CERTIFICATE-----
-MIIFazCCA1OgAwIBAgISA5... (скратено) ...Q==
------END CERTIFICATE-----
-PEM;
-  $caf = '/tmp/isrgrootx1.pem';
-  @file_put_contents($caf, $ca);
-
-  try {
-    $dsn = "mysql:host={$host};port={$port};dbname={$db};charset=utf8mb4;ssl-mode=VERIFY_CA";
-    $pdo = new PDO($dsn, $user, $pass, [
-      PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-      PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-      PDO::ATTR_TIMEOUT => 5,
-      PDO::MYSQL_ATTR_SSL_CA => $caf,
-    ]);
-    $pdo->query('SELECT 1');
-    echo "PDO_VERIFY_CA=OK\n";
-    exit;
-  } catch (Throwable $e) {
-    echo "PDO_VERIFY_CA=FAIL: ".$e->getMessage()."\n";
-  }
-
-  // Try 3: legacy flags (често не треба, ама пробуваме)
+  
   try {
     $dsn = "mysql:host={$host};port={$port};dbname={$db};charset=utf8mb4";
     $pdo = new PDO($dsn, $user, $pass, [
@@ -100,7 +77,6 @@ PEM;
     ]);
     $pdo->query('SELECT 1');
     echo "PDO_NO_VERIFY=OK\n";
-    exit;
   } catch (Throwable $e) {
     echo "PDO_NO_VERIFY=FAIL: ".$e->getMessage()."\n";
   }
@@ -109,22 +85,26 @@ PEM;
   exit;
 }
 
-// ---- GraphQL ----
+
 if ($path === '/graphql') {
+  
   if ($method === 'GET') {
     header('Content-Type: text/plain; charset=utf-8');
     echo "GraphQL endpoint ready. Use POST with JSON body.";
     exit;
   }
   if ($method !== 'POST') {
-    header('Allow: POST, GET, OPTIONS'); http_response_code(405); echo "Method Not Allowed"; exit;
+    header('Allow: POST, GET, OPTIONS');
+    http_response_code(405);
+    echo "Method Not Allowed";
+    exit;
   }
-  require_once __DIR__ . '/../vendor/autoload.php';
-  echo App\Controller\GraphQL::handle();
+  
+  require __DIR__ . '/graphql/index.php';
   exit;
 }
 
-// 404
+/* ---------- 404 ---------- */
 http_response_code(404);
 header('Content-Type: text/plain; charset=utf-8');
 echo "Not Found: {$path}";
