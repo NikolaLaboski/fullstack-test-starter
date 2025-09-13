@@ -10,11 +10,11 @@ if ($path === '/dbtest') {
 
     echo "HOST=$host\nPORT=$port\nDB=$db\nUSER=$user\n";
 
-    // 1) DNS resolve
+    
     $ip = gethostbyname($host);
     echo "RESOLVED_IP=$ip\n";
 
-    // 2) Raw TCP socket test (без SSL, само да видиме дали се отвора портот)
+    
     $errno = 0; $errstr = '';
     $t0 = microtime(true);
     $sock = @fsockopen($host, $port, $errno, $errstr, 3.0);
@@ -26,7 +26,7 @@ if ($path === '/dbtest') {
         echo "SOCKET=FAIL ($errno) $errstr\n";
     }
 
-    // 3) PDO со краток timeout
+    
     try {
         $dsn = "mysql:host={$host};port={$port};dbname={$db};charset=utf8mb4";
         $pdo = new PDO($dsn, $user, $pass, [
