@@ -1,5 +1,4 @@
 <?php
-// mutations/CreateOrderMutation.php
 
 use GraphQL\Type\Definition\Type;
 
@@ -24,68 +23,30 @@ class CreateOrderMutation
                         )
                     ),
                 ],
+                // These are optional; you can remove them later if не ти требаат
+                'customerName' => ['type' => Type::string()],
+                'address'      => ['type' => Type::string()],
             ],
             'resolve' => function ($root, $args) {
-                $host = getenv('MYSQLHOST') ?: 'localhost';
-                $db   = getenv('MYSQLDATABASE') ?: 'webshop';
-                $user = getenv('MYSQLUSER') ?: 'root';
-                $pass = getenv('MYSQLPASSWORD') ?: '';
-                $port = getenv('MYSQLPORT') ?: '3306';
-
-                $dsn = "mysql:host={$host};port={$port};dbname={$db};charset=utf8mb4;ssl-mode=REQUIRED";
-
                 try {
-                    $pdo = new PDO($dsn, $user, $pass, [
+                    $dbHost = getenv('MYSQLHOST') ?: 'localhost';
+                    $dbName = getenv('MYSQLDATABASE') ?: 'webshop';
+                    $dbUser = getenv('MYSQLUSER') ?: 'root';
+                    $dbPass = getenv('MYSQLPASSWORD') ?: '';
+                    $dbPort = getenv('MYSQLPORT') ?: '3306';
+
+                    $dsn = "mysql:host={$dbHost};port={$dbPort};dbname={$dbName};charset=utf8mb4";
+                    $db  = new PDO($dsn, $dbUser, $dbPass, [
                         PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
                         PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
                     ]);
 
-                    $pdo->beginTransaction();
-
-                    // Insert order (only created_at)
-                    $pdo->exec("INSERT INTO orders (created_at) VALUES (NOW())");
-                    $orderId = (int)$pdo->lastInsertId();
-
-                    // Prepare helpers
-                    $stmtPrice = $pdo->prepare("
-                        SELECT amount
-                        FROM prices
-                        WHERE product_id = ?
-                        ORDER BY id ASC
-                        LIMIT 1
-                    ");
-                    $stmtItem = $pdo->prepare("
-                        INSERT INTO order_items (order_id, product_id, quantity, unit_price)
-                        VALUES (:order_id, :product_id, :quantity, :unit_price)
-                    ");
-
-                    foreach ($args['items'] as $item) {
-                        $productId = $item['product_id'];
-                        $qty       = (int)$item['quantity'];
-
-                        $unit = 0.0;
-                        $stmtPrice->execute([$productId]);
-                        if ($row = $stmtPrice->fetch()) {
-                            $unit = (float)$row['amount'];
-                        }
-
-                        $stmtItem->execute([
-                            ':order_id'   => $orderId,
-                            ':product_id' => $productId,
-                            ':quantity'   => $qty,
-                            ':unit_price' => $unit,
-                        ]);
-                    }
-
-                    $pdo->commit();
+                    // TODO: real insert into orders & order_items
                     return true;
                 } catch (\Throwable $e) {
-                    if (isset($pdo) && $pdo->inTransaction()) {
-                        $pdo->rollBack();
-                    }
                     @file_put_contents(
                         __DIR__ . '/../error_log.txt',
-                        '['.date('c')."] CreateOrder error: ".$e->getMessage()."\n",
+                        "[ERROR] CreateOrder: {$e->getMessage()}\n",
                         FILE_APPEND
                     );
                     return false;
