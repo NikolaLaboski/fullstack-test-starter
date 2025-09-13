@@ -1,5 +1,5 @@
 <?php
-// public/index.php — health, /dbtest proxy (public/graphql/index.php)
+// public/index.php — health, /dbtest, и GraphQL (прокси кон public/graphql/index.php)
 
 $rawPath = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?? '/';
 $path    = rawurldecode($rawPath);
@@ -51,7 +51,7 @@ if ($path === '/dbtest') {
   if ($sock) { echo "SOCKET=OK (".number_format(($t1-$t0)*1000,1)." ms)\n"; fclose($sock); }
   else { echo "SOCKET=FAIL ($errno) $errstr\n"; }
 
-  
+  // Try with SSL required (Railway)
   try {
     $dsn = "mysql:host={$host};port={$port};dbname={$db};charset=utf8mb4;ssl-mode=REQUIRED";
     $pdo = new PDO($dsn, $user, $pass, [
@@ -66,7 +66,7 @@ if ($path === '/dbtest') {
     echo "PDO_SSL_REQUIRED=FAIL: ".$e->getMessage()."\n";
   }
 
-  
+  // Fallback (no verify)
   try {
     $dsn = "mysql:host={$host};port={$port};dbname={$db};charset=utf8mb4";
     $pdo = new PDO($dsn, $user, $pass, [
@@ -85,9 +85,8 @@ if ($path === '/dbtest') {
   exit;
 }
 
-
+/* ---------- GraphQL ---------- */
 if ($path === '/graphql') {
-  
   if ($method === 'GET') {
     header('Content-Type: text/plain; charset=utf-8');
     echo "GraphQL endpoint ready. Use POST with JSON body.";
@@ -99,7 +98,8 @@ if ($path === '/graphql') {
     echo "Method Not Allowed";
     exit;
   }
-  
+
+  // 👉 тука користиме ТВОЈ стар GraphQL endpoint
   require __DIR__ . '/graphql/index.php';
   exit;
 }

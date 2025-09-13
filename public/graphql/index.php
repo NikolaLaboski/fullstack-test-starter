@@ -37,7 +37,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'OPTIONS') {
 /**
  * --- Autoload ---
  */
-$autoload = __DIR__ . '/../vendor/autoload.php';
+$autoload = __DIR__ . '/../../vendor/autoload.php';
+
 if (is_file($autoload)) {
     require_once $autoload;
 }
@@ -123,7 +124,8 @@ try {
     echo json_encode($output, JSON_UNESCAPED_UNICODE);
 } catch (Throwable $e) {
     
-    error_log($e);
+    error_log($e->getMessage() . "\n" . $e->getTraceAsString());
+
 
     $payload = ['errors' => [['message' => 'Internal server error']]];
     if ($debugOn) {
