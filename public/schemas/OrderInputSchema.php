@@ -1,8 +1,5 @@
 <?php
-
-// OrderInputSchema.php
-// Declares the GraphQL InputObjectType used by mutations that accept order items.
-// Shape: { product_id: String!, quantity: Int! }
+// schemas/OrderInputSchema.php
 
 use GraphQL\Type\Definition\InputObjectType;
 use GraphQL\Type\Definition\Type;
@@ -14,9 +11,9 @@ class OrderInputSchema
         return new InputObjectType([
             'name' => 'OrderItemInput',
             'fields' => [
-                'product_id' => Type::nonNull(Type::string()),//string type
+                'product_id' => Type::nonNull(Type::string()),
                 'quantity'   => Type::nonNull(Type::int()),
-            ]
+            ],
         ]);
     }
 }
