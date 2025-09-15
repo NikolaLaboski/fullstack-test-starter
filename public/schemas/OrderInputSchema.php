@@ -14,7 +14,7 @@ class OrderInputSchema
         return new InputObjectType([
             'name' => 'OrderItemInput',
             'fields' => [
-                'product_id' => Type::nonNull(Type::int()),
+                'product_id' => Type::nonNull(Type::string()),
                 'quantity'   => Type::nonNull(Type::int()),
             ]
         ]);
