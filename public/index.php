@@ -1,5 +1,8 @@
 <?php
 // public/index.php — health, /dbtest, и GraphQL (прокси кон public/graphql/index.php)
+ini_set('display_errors', '0');
+ini_set('log_errors', '1');
+ini_set('error_log', __DIR__ . '/../error_log.txt'); 
 
 $rawPath = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?? '/';
 $path    = rawurldecode($rawPath);
@@ -99,7 +102,6 @@ if ($path === '/graphql') {
     exit;
   }
 
-  // 👉 тука користиме ТВОЈ стар GraphQL endpoint
   require __DIR__ . '/graphql/index.php';
   exit;
 }

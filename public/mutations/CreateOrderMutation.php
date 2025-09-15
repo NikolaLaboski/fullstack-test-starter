@@ -1,15 +1,11 @@
 <?php
-// mutations/CreateOrderMutation.php
-
 use GraphQL\Type\Definition\Type;
 
 class CreateOrderMutation
 {
     public static function getMutation(): array
     {
-        return [
-            'createOrder' => self::getDefinition(),
-        ];
+        return ['createOrder' => self::getDefinition()];
     }
 
     public static function getDefinition(): array
@@ -26,8 +22,10 @@ class CreateOrderMutation
                 ],
             ],
             'resolve' => function ($root, $args): bool {
+                $pdo = null;
+                $debugOn = in_array(strtolower((string)(getenv('APP_DEBUG') ?: '0')), ['1','true'], true);
+
                 try {
-                    // --- DB from ENV (works on Railway) ---
                     $dbHost = getenv('MYSQLHOST') ?: 'localhost';
                     $dbName = getenv('MYSQLDATABASE') ?: 'webshop';
                     $dbUser = getenv('MYSQLUSER') ?: 'root';
@@ -42,64 +40,53 @@ class CreateOrderMutation
 
                     $items = $args['items'] ?? [];
                     if (!is_array($items) || count($items) === 0) {
+                        self::elog('CreateOrder: empty items');
                         return false;
                     }
 
-                    // 1) пресметај total од prices (земаме прва цена за производ)
-                    $stmtPrice   = $pdo->prepare("SELECT amount FROM prices WHERE product_id = ? ORDER BY id ASC LIMIT 1");
-                    $stmtExists  = $pdo->prepare("SELECT 1 FROM products WHERE id = ? LIMIT 1");
+                    // calc total
+                    $stmtPrice  = $pdo->prepare("SELECT amount FROM prices WHERE product_id = ? ORDER BY id ASC LIMIT 1");
+                    $stmtExists = $pdo->prepare("SELECT 1 FROM products WHERE id = ? LIMIT 1");
 
                     $total = 0.0;
-                    foreach ($items as $item) {
-                        $pid = (string)$item['product_id'];
-                        $qty = (int)$item['quantity'];
-                        if ($qty < 1) { return false; }
+                    foreach ($items as $it) {
+                        $pid = (string)$it['product_id'];
+                        $qty = (int)$it['quantity'];
+                        if ($qty < 1) { throw new RuntimeException("quantity < 1 for {$pid}"); }
 
-                        // постои ли product
                         $stmtExists->execute([$pid]);
                         if (!$stmtExists->fetchColumn()) {
                             throw new RuntimeException("Unknown product_id: {$pid}");
                         }
 
-                        // цена
                         $stmtPrice->execute([$pid]);
                         $row = $stmtPrice->fetch();
                         $price = $row && isset($row['amount']) ? (float)$row['amount'] : 0.0;
-
                         $total += $price * $qty;
                     }
 
-                    // 2) INSERT во orders
-                    // твојата табела: orders(id, customer_name, total_price, created_at)
                     $pdo->beginTransaction();
 
-                    $stmtOrder = $pdo->prepare("
-                        INSERT INTO orders (customer_name, total_price, created_at)
-                        VALUES (:customer_name, :total_price, :created_at)
-                    ");
-                    // customer_name може да е NULL ако не го користиш
-                    $stmtOrder->execute([
-                        ':customer_name' => null,
-                        ':total_price'   => $total,
-                        ':created_at'    => date('Y-m-d H:i:s'),
+                    $now = date('Y-m-d H:i:s');
+                    $customerName = ''; // за NOT NULL колони
+
+                    // обиди се со total_price, па fallback total
+                    $orderId = self::insertOrder($pdo, [
+                        'customer_name' => $customerName,
+                        'total_price'   => $total,
+                        'total'         => $total,
+                        'created_at'    => $now,
                     ]);
 
-                    $orderId = (int)$pdo->lastInsertId();
-                    if ($orderId <= 0) {
-                        throw new RuntimeException('Failed to insert order');
-                    }
-
-                    // 3) INSERT во order_items (id, order_id, product_id, quantity)
                     $stmtItem = $pdo->prepare("
                         INSERT INTO order_items (order_id, product_id, quantity)
                         VALUES (:order_id, :product_id, :quantity)
                     ");
-
-                    foreach ($items as $item) {
+                    foreach ($items as $it) {
                         $stmtItem->execute([
                             ':order_id'   => $orderId,
-                            ':product_id' => (string)$item['product_id'], // string slug
-                            ':quantity'   => (int)$item['quantity'],
+                            ':product_id' => (string)$it['product_id'],
+                            ':quantity'   => (int)$it['quantity'],
                         ]);
                     }
 
@@ -107,17 +94,47 @@ class CreateOrderMutation
                     return true;
 
                 } catch (\Throwable $e) {
-                    if (isset($pdo) && $pdo->inTransaction()) {
-                        $pdo->rollBack();
-                    }
-                    @file_put_contents(
-                        __DIR__ . '/../error_log.txt',
-                        "[ERROR] CreateOrder: {$e->getMessage()}\n",
-                        FILE_APPEND
-                    );
+                    if ($pdo && $pdo->inTransaction()) { $pdo->rollBack(); }
+                    self::elog('[CreateOrder][EXCEPTION] '.$e->getMessage());
+                    if ($debugOn) { throw $e; } // ← ќе ја видиш грешката во GraphQL response
                     return false;
                 }
             },
         ];
+    }
+
+    private static function insertOrder(PDO $pdo, array $data): int
+    {
+        try {
+            $stmt = $pdo->prepare("
+                INSERT INTO orders (customer_name, total_price, created_at)
+                VALUES (:customer_name, :total_price, :created_at)
+            ");
+            $stmt->execute([
+                ':customer_name' => $data['customer_name'],
+                ':total_price'   => $data['total_price'],
+                ':created_at'    => $data['created_at'],
+            ]);
+            return (int)$pdo->lastInsertId();
+        } catch (\Throwable $e) {
+            if (stripos($e->getMessage(), 'Unknown column') !== false && stripos($e->getMessage(), 'total_price') !== false) {
+                $stmt = $pdo->prepare("
+                    INSERT INTO orders (customer_name, total, created_at)
+                    VALUES (:customer_name, :total, :created_at)
+                ");
+                $stmt->execute([
+                    ':customer_name' => $data['customer_name'],
+                    ':total'         => $data['total'],
+                    ':created_at'    => $data['created_at'],
+                ]);
+                return (int)$pdo->lastInsertId();
+            }
+            throw $e;
+        }
+    }
+
+    private static function elog(string $msg): void
+    {
+        @file_put_contents(__DIR__ . '/../error_log.txt', '['.date('Y-m-d H:i:s')."] {$msg}\n", FILE_APPEND);
     }
 }
