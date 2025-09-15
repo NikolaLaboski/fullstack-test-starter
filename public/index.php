@@ -110,3 +110,37 @@ if ($path === '/graphql') {
 http_response_code(404);
 header('Content-Type: text/plain; charset=utf-8');
 echo "Not Found: {$path}";
+
+// --- DB SCHEMA CHECK ---
+if ($path === '/dbschema') {
+  header('Content-Type: text/plain; charset=utf-8');
+  try {
+    $host = getenv('MYSQLHOST'); $port = (int)getenv('MYSQLPORT');
+    $db = getenv('MYSQLDATABASE'); $user = getenv('MYSQLUSER'); $pass = getenv('MYSQLPASSWORD');
+    $pdo = new PDO("mysql:host=$host;port=$port;dbname=$db;charset=utf8mb4;ssl-mode=REQUIRED", $user, $pass, [
+      PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION,
+      PDO::ATTR_DEFAULT_FETCH_MODE=>PDO::FETCH_ASSOC,
+    ]);
+    $stmt = $pdo->query("SHOW CREATE TABLE order_items");
+    $row = $stmt->fetch(PDO::FETCH_NUM);
+    echo $row[1]."\n";
+  } catch (Throwable $e) { echo "ERR: ".$e->getMessage(); }
+  exit;
+}
+
+// --- DB FIX (one-off) ---
+if ($path === '/dbfix') {
+  header('Content-Type: text/plain; charset=utf-8');
+  try {
+    $host = getenv('MYSQLHOST'); $port = (int)getenv('MYSQLPORT');
+    $db = getenv('MYSQLDATABASE'); $user = getenv('MYSQLUSER'); $pass = getenv('MYSQLPASSWORD');
+    $pdo = new PDO("mysql:host=$host;port=$port;dbname=$db;charset=utf8mb4;ssl-mode=REQUIRED", $user, $pass, [
+      PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION,
+      PDO::ATTR_DEFAULT_FETCH_MODE=>PDO::FETCH_ASSOC,
+    ]);
+
+    $pdo->exec("ALTER TABLE order_items MODIFY COLUMN product_id VARCHAR(191) NOT NULL");
+    echo "OK: product_id -> VARCHAR(191)";
+  } catch (Throwable $e) { echo "ERR: ".$e->getMessage(); }
+  exit;
+}
