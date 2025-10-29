@@ -1,5 +1,5 @@
 <?php
-namespace App\Repository;
+namespace App\Model;
 
 use App\Infrastructure\Database;
 use App\Model\AbstractProduct;
@@ -94,18 +94,38 @@ final class ProductRepository
     }
 
     /** @return string[] */
-    private static function gallery(PDO $pdo, string $productId, ?string $fallback): array
-    {
-        $st = $pdo->prepare("SELECT url FROM product_images WHERE product_id = ? ORDER BY sort_order ASC, id ASC");
+private static function gallery(PDO $pdo, string $productId, ?string $fallback): array
+{
+    // Try 'url' column (newer schema)
+    try {
+        $st = $pdo->prepare(
+            "SELECT url FROM product_images WHERE product_id = ? ORDER BY sort_order ASC, id ASC"
+        );
         $st->execute([$productId]);
         $rows = $st->fetchAll(PDO::FETCH_COLUMN) ?: [];
-
-        if (!$rows) {
-            $st = $pdo->prepare("SELECT image_url FROM product_images WHERE product_id = ? ORDER BY id ASC");
-            $st->execute([$productId]);
-            $rows = $st->fetchAll(PDO::FETCH_COLUMN) ?: [];
+        if (!empty($rows)) {
+            return $rows;
         }
-        if (!$rows && $fallback) $rows = [$fallback];
-        return $rows;
+    } catch (\Throwable $e) {
+        // ignore and try alternative schema
     }
+
+    // Try 'image_url' column (older schema)
+    try {
+        $st = $pdo->prepare(
+            "SELECT image_url FROM product_images WHERE product_id = ? ORDER BY id ASC"
+        );
+        $st->execute([$productId]);
+        $rows = $st->fetchAll(PDO::FETCH_COLUMN) ?: [];
+        if (!empty($rows)) {
+            return $rows;
+        }
+    } catch (\Throwable $e) {
+        // ignore and fall back
+    }
+
+    // Final fallback: single image from products.image (if present)
+    return $fallback ? [$fallback] : [];
+}
+
 }

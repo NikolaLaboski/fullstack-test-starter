@@ -1,0 +1,8 @@
+{
+  "query": "mutation($items:[OrderItemInput!]!){ createOrder(items:$items) }",
+  "variables": {
+    "items": [
+      { "product_id": "apple-imac-2021", "quantity": 2 }
+    ]
+  }
+}

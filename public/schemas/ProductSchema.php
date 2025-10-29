@@ -1,10 +1,18 @@
 <?php
 use GraphQL\Type\Definition\ObjectType;
 use GraphQL\Type\Definition\Type;
-use App\Repository\ProductRepository;
-use App\Model\ProductInterface;
 
 require_once __DIR__ . '/../schemas/AttributeSchema.php';
+
+/**
+ * Make sure composer autoload is present for src/ classes.
+ * (hot-fix so this file can see App\Model\* directly)
+ */
+$autoload = __DIR__ . '/../../vendor/autoload.php';
+if (is_file($autoload)) { require_once $autoload; }
+
+use App\Model\ProductRepository;
+use App\Model\ProductInterface;
 
 class ProductSchema
 {
@@ -19,8 +27,9 @@ class ProductSchema
                     'products' => [
                         'type' => Type::listOf(self::productType()),
                         'resolve' => function () {
-                            // return model instances
-                            return ProductRepository::all();
+                            // Fetch domain models, then adapt to plain arrays for GraphQL
+                            $models = ProductRepository::all();
+                            return array_map([self::class, 'modelToArray'], $models);
                         }
                     ],
                     'product' => [
@@ -29,7 +38,8 @@ class ProductSchema
                             'id' => Type::nonNull(Type::string())
                         ],
                         'resolve' => function ($root, $args) {
-                            return ProductRepository::find((string)$args['id']);
+                            $m = ProductRepository::find($args['id']);
+                            return $m ? self::modelToArray($m) : null;
                         }
                     ],
                 ];
@@ -44,84 +54,55 @@ class ProductSchema
                 'name' => 'Product',
                 'fields' => function () {
                     return [
-                        'id' => [
-                            'type' => Type::nonNull(Type::string()),
-                            'resolve' => function ($p) {
-                                return $p instanceof ProductInterface ? $p->getId() : (string)($p['id'] ?? '');
-                            }
-                        ],
-                        'name' => [
-                            'type' => Type::string(),
-                            'resolve' => function ($p) {
-                                return $p instanceof ProductInterface ? $p->getName() : ($p['name'] ?? null);
-                            }
-                        ],
-                        'category' => [
-                            'type' => Type::string(),
-                            'resolve' => function ($p) {
-                                return $p instanceof ProductInterface ? $p->getCategory() : ($p['category'] ?? null);
-                            }
-                        ],
-                        'brand' => [
-                            'type' => Type::string(),
-                            'resolve' => function ($p) {
-                                return $p instanceof ProductInterface ? $p->getBrand() : ($p['brand'] ?? null);
-                            }
-                        ],
-                        'description' => [
-                            'type' => Type::string(),
-                            'resolve' => function ($p) {
-                                return $p instanceof ProductInterface ? $p->getDescription() : ($p['description'] ?? null);
-                            }
-                        ],
-                        'inStock' => [
-                            'type' => Type::boolean(),
-                            'resolve' => function ($p) {
-                                return $p instanceof ProductInterface ? $p->isInStock() : ($p['inStock'] ?? null);
-                            }
-                        ],
-                        'gallery' => [
-                            'type' => Type::listOf(Type::string()),
-                            'resolve' => function ($p) {
-                                return $p instanceof ProductInterface ? $p->getGallery() : (array)($p['gallery'] ?? []);
-                            }
-                        ],
+                        'id'        => Type::nonNull(Type::string()),
+                        'name'      => Type::string(),
+                        'category'  => Type::string(),
+                        'brand'     => Type::string(),
+                        'description'=> Type::string(),
+                        'inStock'   => Type::boolean(),
+
+                        'gallery'   => Type::listOf(Type::string()),
+
                         'image' => [
                             'type' => Type::string(),
-                            'resolve' => function ($p) {
-                                $g = $p instanceof ProductInterface ? $p->getGallery() : (array)($p['gallery'] ?? []);
-                                return $g[0] ?? 'https://via.placeholder.com/220x220.png?text=No+Image';
+                            'resolve' => function ($product) {
+                                return isset($product['gallery'][0])
+                                    ? $product['gallery'][0]
+                                    : 'https://via.placeholder.com/220x220.png?text=No+Image';
                             }
                         ],
+
                         'prices' => [
                             'type' => Type::listOf(new ObjectType([
                                 'name' => 'Price',
                                 'fields' => [
-                                    'amount' => Type::float(),
-                                    'currency_label' => Type::string(),
+                                    'amount'          => Type::float(),
+                                    'currency_label'  => Type::string(),
                                     'currency_symbol' => Type::string(),
                                 ]
                             ])),
-                            'resolve' => function ($p) {
-                                return $p instanceof ProductInterface ? $p->getPrices() : (array)($p['prices'] ?? []);
+                            'resolve' => function ($product) {
+                                return $product['prices'] ?? [];
                             }
                         ],
+
                         'price' => [
                             'type' => Type::float(),
-                            'resolve' => function ($p) {
-                                if ($p instanceof ProductInterface) {
-                                    return $p->getPrices()[0]['amount'] ?? null;
+                            'resolve' => function ($product) {
+                                if (isset($product['price']) && $product['price'] !== null) {
+                                    return (float)$product['price'];
                                 }
-                                if (!empty($p['prices']) && isset($p['prices'][0]['amount'])) {
-                                    return (float)$p['prices'][0]['amount'];
+                                if (!empty($product['prices'][0]['amount'])) {
+                                    return (float)$product['prices'][0]['amount'];
                                 }
                                 return null;
                             }
                         ],
+
                         'attributes' => [
                             'type' => Type::listOf(AttributeSchema::getAttributeType()),
-                            'resolve' => function ($p) {
-                                return $p instanceof ProductInterface ? $p->getAttributes() : (array)($p['attributes'] ?? []);
+                            'resolve' => function ($product) {
+                                return $product['attributes'] ?? [];
                             }
                         ],
                     ];
@@ -130,5 +111,31 @@ class ProductSchema
         }
 
         return self::$productType;
+    }
+
+    /**
+     * Adapt a domain model (ProductInterface) to the associative-array
+     * structure expected by the GraphQL type above.
+     */
+    private static function modelToArray(ProductInterface $p): array
+    {
+        $prices = $p->getPrices();
+        $price  = null;
+        if (!empty($prices) && isset($prices[0]['amount'])) {
+            $price = (float)$prices[0]['amount'];
+        }
+
+        return [
+            'id'          => $p->getId(),
+            'name'        => $p->getName(),
+            'category'    => $p->getCategory(),
+            'brand'       => $p->getBrand(),
+            'description' => $p->getDescription(),
+            'inStock'     => $p->isInStock(),
+            'gallery'     => $p->getGallery(),
+            'prices'      => $prices,
+            'price'       => $price,
+            'attributes'  => $p->getAttributes(),
+        ];
     }
 }
