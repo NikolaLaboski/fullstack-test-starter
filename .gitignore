@@ -1,1 +1,5 @@
 /vendor/
+/node_modules/
+/.env
+/.env.local
+/error_log.txt
